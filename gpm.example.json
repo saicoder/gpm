@@ -1,0 +1,12 @@
+{
+  "packages": {
+    "node": {
+    }, 
+    "gnome-shell": {
+      "group": "desktop"
+    }, 
+    "ruby": {
+      "group": "dev"
+    }
+  }
+}

@@ -1,0 +1,164 @@
+#!/usr/bin/python
+
+import json
+import os
+import sys
+from pprint import pprint
+from subprocess import call
+import argparse
+
+def sys_install(name, props):
+  rez = os.system('apt-get install -y --no-install-recommends {:}'.format(name))
+  return rez == 0
+
+def sys_uninstall(name, props):
+  rez = os.system('apt-get remove -y --purge {:}'.format(name))
+  return rez == 0
+
+def load_package():
+  package_file = os.path.join(os.getcwd(), 'gpm.json')
+  if os.path.isfile('/etc/gpm.json'):
+    package_file = '/etc/gpm.json'
+
+  with open(package_file) as data_file:
+    package_data = json.load(data_file)
+
+  return None if package_data["packages"] == None else package_data
+
+def save_package(package):
+  package_file = os.path.join(os.getcwd(), 'gpm.json')
+  if os.path.isfile('/etc/gpm.json'):
+    package_file = '/etc/gpm.json'
+
+
+  json_str = json.dumps(package, ensure_ascii=False, indent=2)
+  with open(package_file, 'w') as data_file:
+    data_file.write(json_str)
+
+
+def get_filtered_packages(package_file=None, group=None):
+  package_file = package_file if package_file != None else load_package()
+
+  pacs = []
+  for k in package_file["packages"]:
+    if ("group" in package_file["packages"][k] and package_file["packages"][k]["group"] == group) or group == None:
+      item = package_file["packages"][k].copy()
+      item.update({'name': k})
+      pacs.append(item)
+  return pacs
+
+def has_package(name, package=None):
+  package = package if package != None else load_package()
+  return name in package['packages']
+
+
+def cmd_remove():
+  parser = argparse.ArgumentParser(description='Remove package from gpm.json and OS')
+  parser.add_argument('name', help='package name')
+  args = parser.parse_args(sys.argv[2:])
+  
+  pac = load_package()
+  if has_package(args.name, pac):
+    pac['packages'].pop(args.name, None)
+    save_package(pac)
+    sys_uninstall(args.name, pac)
+    print("Package removed")
+  else:
+    print("\nPackage {:} is not in gpm list!\nEnter `gpm list` to see avalabile packages\n".format(args.name))
+
+def cmd_add():
+  parser = argparse.ArgumentParser(description='Add new package to gpm.json')
+  parser.add_argument('name', help='package name')
+  parser.add_argument('--group', help='Group to add package into')
+  args = parser.parse_args(sys.argv[2:])
+  
+  pac = load_package()
+  if has_package(args.name, pac):
+    print("Package {:} is already in list!".format(args.name))
+  else:
+    pac['packages'][args.name] = {}
+    if args.group != None:
+      pac['packages'][args.name]['group'] = args.group
+
+    if sys_install(args.name, pac):
+      save_package(pac)
+      print("Package added")
+    else:
+      print("System package installation ended with error")
+
+def cmd_list():
+  parser = argparse.ArgumentParser(description='List all packages in gpm.json')
+  parser.add_argument('--group', help='Filter packages by group')
+  args = parser.parse_args(sys.argv[2:])
+  
+  pacs = get_filtered_packages(None, args.group)
+
+  if len(pacs) == 0:
+    print('\n No packages to list \n')
+  else:
+    print('Packages:\n')
+    for t in pacs:
+      print(" {:>20} - group: {:<10}".format(t['name'], t['group'] if 'group' in t else '-' ))
+    print('')
+
+
+def cmd_install():
+  parser = argparse.ArgumentParser(description='Install all packages from gpm')
+  parser.add_argument('--group', help='Filter packages by group')
+  args = parser.parse_args(sys.argv[2:])
+  
+  pacs = get_filtered_packages(None, args.group)
+
+  if len(pacs) == 0:
+    print('\n No packages to install \n')
+  else:
+    print('Installing Packages:\n')
+    for t in pacs:
+      sys_install(t['name'], t)
+
+def cmd_uninstall():
+  parser = argparse.ArgumentParser(description='Uninstall all packages from gpm')
+  parser.add_argument('--group', help='Filter packages by group')
+  args = parser.parse_args(sys.argv[2:])
+  
+  pacs = get_filtered_packages(None, args.group)
+
+  if len(pacs) == 0:
+    print('\n No packages to uninstall \n')
+  else:
+    print('Uninstalling Packages:\n')
+    for t in pacs:
+      sys_uninstall(t['name'], t)
+
+
+# MAIN ==================================================================================
+if __name__ == '__main__':
+  usage='''gpm <command> [<args>]
+
+  Possible gpm commands are:
+     add        Add new package to gpm.json and run installation
+     remove     Remove package from gpm.json and run uninstalation
+     list       List of all packages and their groups
+     install    install all packages from gpm.json
+     uninstall  uninstall all packages from gpm.json
+  '''
+
+  parser = argparse.ArgumentParser(description='Group Package Installer - group installing and removing of os packages', usage=usage)
+  parser.add_argument("command", help="Subcommand to run")
+  args = parser.parse_args(sys.argv[1:2])
+  comms = {
+    'list': cmd_list,
+    'add': cmd_add,
+    'remove': cmd_remove,
+    'install': cmd_install,
+    'uninstall': cmd_uninstall
+  }
+
+  if args.command in comms:
+    comms[args.command]()
+  else:
+    print('Invalid command. See -h for avalabile commands')
+
+
+
+
